@@ -1,6 +1,0 @@
-- [ ] Remove all AI Resume Builder features from the project
-- [ ] Make it completely open-source without any proprietary components
-- [ ] Remove all permissions related to AI and Auth services from the codebase
-- [ ] Update README to allow easy forking, customization, and collaboration by users
-- [ ] Add ban company feature to block certain companies from appearing in job listings
-- [ ] Remove graphs related to AI resume generation usage and replace with banned companies statistics

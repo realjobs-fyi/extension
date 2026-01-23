@@ -50,22 +50,26 @@ interface SettingsData {
   hidePromotedPositions?: boolean;
   sortByDD?: boolean;
   bannedWords?: string[];
+  bannedCompanies?: string[];
   active?: boolean;
 }
+
+// marcelo you are dumb af
 
 export function Options() {
   const [hidePromoted, setHidePromoted] = useState<boolean>(true);
   const [sortByDD, setSortByDD] = useState<boolean>(true);
   const [bannedWords, setBannedWords] = useState<string[]>([]);
+  const [bannedCompanies, setBannedCompanies] = useState<string[]>([]);
   const [newWordInput, setNewWordInput] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [statusType, setStatusType] = useState<"success" | "error" | "info">(
-    "info"
+    "info",
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<
-    "settings" | "analytics"
-  >("settings");
+  const [activeTab, setActiveTab] = useState<"settings" | "analytics">(
+    "settings",
+  );
   const [chartDays, setChartDays] = useState<7 | 14 | 30>(7);
   const [chartData, setChartData] = useState<
     Array<{ date: string; hidden: number }>
@@ -73,6 +77,12 @@ export function Options() {
   const [bannedWordsData, setBannedWordsData] = useState<
     Array<{ word: string; count: number }>
   >([]);
+
+  // maybe I'll need this later
+
+  // const [bannedCompaniesData, setBannedCompaniesData] = useState<
+  //   Array<{ company: string; count: number }>
+  // >([]);
   const [pieChartData, setPieChartData] = useState<
     Array<{ reason: string; count: number; fill: string }>
   >([]);
@@ -83,13 +93,14 @@ export function Options() {
   // Load current settings
   const loadSettings = (): void => {
     chrome.storage.sync.get(
-      ["hidePromotedPositions", "sortByDD", "bannedWords"],
+      ["hidePromotedPositions", "sortByDD", "bannedWords", "bannedCompanies"],
       (result: SettingsData) => {
         setHidePromoted(result.hidePromotedPositions !== false); // Default to true
         setSortByDD(result.sortByDD !== false); // Default to true
         setBannedWords(result.bannedWords || []);
+        setBannedCompanies(result.bannedCompanies || []);
         setUserChangedSettings(false); // Reset flag when loading existing settings
-      }
+      },
     );
   };
 
@@ -100,12 +111,16 @@ export function Options() {
     const bannedWordsArray = bannedWords
       .map((word) => word.trim())
       .filter((word) => word.length > 0);
+    const bannedCompaniesArray = bannedCompanies
+      .map((company) => company.trim().toLowerCase())
+      .filter((company) => company.length > 0);
 
     chrome.storage.sync.set(
       {
         hidePromotedPositions: hidePromoted,
         sortByDD: sortByDD,
         bannedWords: bannedWordsArray,
+        bannedCompanies: bannedCompaniesArray,
       },
       () => {
         showStatus("Settings saved successfully!", "success");
@@ -122,11 +137,11 @@ export function Options() {
                     chrome.tabs.reload(tab.id);
                   }
                 });
-              }
+              },
             );
           }
         });
-      }
+      },
     );
   };
 
@@ -138,6 +153,7 @@ export function Options() {
       setHidePromoted(true);
       setSortByDD(true);
       setBannedWords([]);
+      setBannedCompanies([]);
       setUserChangedSettings(true); // Mark as changed so save button is enabled
       // Save immediately after reset
       setTimeout(() => {
@@ -163,10 +179,18 @@ export function Options() {
     setUserChangedSettings(true);
   };
 
+  // Handle removing a banned company
+  const handleRemoveCompany = (companyToRemove: string): void => {
+    setBannedCompanies(
+      bannedCompanies.filter((company) => company !== companyToRemove),
+    );
+    setUserChangedSettings(true);
+  };
+
   // Show status message
   const showStatus = (
     message: string,
-    type: "success" | "error" | "info" = "info"
+    type: "success" | "error" | "info" = "info",
   ): void => {
     setStatusMessage(message);
     setStatusType(type);
@@ -230,7 +254,18 @@ export function Options() {
     }
   }, []);
 
-  // Load pie chart data (promoted vs banned words)
+  // Load banned companies data
+  // const loadBannedCompaniesData = useCallback(async (): Promise<void> => {
+  //   try {
+  //     const companies = await JobTracker.getMostCommonBannedCompanies(10);
+  //     setBannedCompaniesData(companies
+  //   } catch (error) {
+  //     console.error("Error loading banned companies data:", error);
+  //     setBannedCompaniesData([]);
+  //   }
+  // }, []);
+
+  // Load pie chart data (promoted vs banned words vs banned companies)
   const loadPieChartData = useCallback(async (): Promise<void> => {
     try {
       const stats = await JobTracker.getStatistics({ days: chartDays });
@@ -245,6 +280,11 @@ export function Options() {
           count: stats.bannedWords,
           fill: "var(--color-banned_words)",
         },
+        {
+          reason: "banned_companies",
+          count: stats.bannedCompanies,
+          fill: "var(--color-banned_companies)",
+        },
       ].filter((item) => item.count > 0); // Only show segments with data
       setPieChartData(data);
     } catch (error) {
@@ -258,7 +298,7 @@ export function Options() {
     loadSettings();
     // Read hash from URL to set initial tab
     const hash = window.location.hash.slice(1); // Remove the '#'
-    if ( hash === "settings" || hash === "analytics") {
+    if (hash === "settings" || hash === "analytics") {
       setActiveTab(hash);
     }
     setMounted(true);
@@ -288,6 +328,7 @@ export function Options() {
     if (activeTab === "analytics") {
       loadChartData(chartDays);
       loadBannedWordsData();
+      // loadBannedCompaniesData();
       loadPieChartData();
     }
   }, [
@@ -295,12 +336,12 @@ export function Options() {
     chartDays,
     loadChartData,
     loadBannedWordsData,
+    // loadBannedCompaniesData,
     loadPieChartData,
   ]);
 
   return (
     <div className="min-h-screen bg-white z-10 w-full">
-
       <div className="container mx-auto max-w-3xl mt-8">
         {/* Header */}
         <div className="flex items-center justify-start gap-1 px-6">
@@ -484,6 +525,67 @@ export function Options() {
                   </form>
                 </div>
               </div>
+
+              {/* Divider */}
+              <div className="w-full h-px bg-gray-200 mb-6" />
+
+              {/* Banned Companies */}
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="flex flex-row items-center justify-start gap-1">
+                    <h2 className="text-sm font-medium text-gray-900">
+                      Banned Companies
+                    </h2>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3 h-3 text-gray-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">
+                          Jobs from these companies will be hidden from search
+                          results
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Companies that will not appear in job listings. Use the ban
+                    button next to company names on LinkedIn to add companies
+                    here.
+                  </p>
+                </div>
+                <div>
+                  {bannedCompanies.length > 0 ? (
+                    <div className="flex flex-row items-center justify-start gap-2 flex-wrap">
+                      {bannedCompanies.map((company, index) => (
+                        <button
+                          key={`${company}-${index}`}
+                          onClick={() => handleRemoveCompany(company)}
+                          aria-label={`Remove ${company}`}
+                          title={`Remove ${company} from banned list`}
+                          className="flex flex-row items-center justify-start gap-2 bg-red-500 hover:bg-red-600 transition-all duration-300 rounded-xl py-1 px-3 w-fit cursor-pointer"
+                        >
+                          <p className="text-xs text-white font-medium capitalize cursor-pointer">
+                            {company}
+                          </p>
+                          <span className="cursor-pointer">
+                            <X
+                              strokeWidth={3}
+                              fill="white"
+                              className="w-3 h-3 text-white"
+                            />
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">
+                      No banned companies yet. Use the ban button next to
+                      company names on LinkedIn job listings.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Actions */}
@@ -583,9 +685,7 @@ export function Options() {
                 </Select>
               </div>
             </div>
-            <div className="flex items-center justify-center gap-4 mt-6 w-full">
-             
-            </div>
+            <div className="flex items-center justify-center gap-4 mt-6 w-full"></div>
 
             {/* separator */}
             <div className="w-full h-px bg-gray-200 my-6" />
@@ -653,7 +753,7 @@ export function Options() {
                                   {
                                     month: "short",
                                     day: "numeric",
-                                  }
+                                  },
                                 );
                               }}
                               indicator="dot"
@@ -685,8 +785,111 @@ export function Options() {
             {/* separator */}
             <div className="w-full h-px bg-gray-200 my-6" />
 
+            {/* three columns looks awful, and one row with one graph looks even worse */}
+
             <div className="grid grid-cols-2 max-md:grid-cols-1 gap-4 mt-6">
-              {/* First column - Bar chart for most frequent banned words */}
+              {/* First column - Bar chart for most blocked companies */}
+              {/* <div className="col-span-1">
+                <Card className="shadow-none border-none w-full">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-gray-900">
+                      Most Blocked Companies
+                    </CardTitle>
+                    <CardDescription>
+                      Top banned companies that triggered filters
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {bannedCompaniesData.length > 0 ? (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "200px",
+                          minWidth: 0,
+                          minHeight: "200px",
+                        }}
+                      >
+                        <ChartContainer
+                          key={`banned-companies-${activeTab}-${chartDays}`}
+                          config={{
+                            count: {
+                              label: "Count",
+                              color: "#60a5fa",
+                            },
+                            label: {
+                              color: "var(--background)",
+                            },
+                          }}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            height: "200px",
+                          }}
+                        >
+                          <BarChart
+                            accessibilityLayer
+                            data={bannedCompaniesData}
+                            layout="vertical"
+                            margin={{
+                              right: 50,
+                              left: 8,
+                              top: 8,
+                              bottom: 8,
+                            }}
+                          >
+                            <CartesianGrid horizontal={false} />
+                            <YAxis
+                              dataKey="company"
+                              type="category"
+                              tickLine={false}
+                              tickMargin={10}
+                              axisLine={false}
+                              hide
+                            />
+                            <XAxis dataKey="count" type="number" hide />
+                            <ChartTooltip
+                              cursor={false}
+                              content={
+                                <ChartTooltipContent
+                                  indicator="line"
+                                  className="capitalize"
+                                />
+                              }
+                            />
+                            <Bar
+                              dataKey="count"
+                              fill="var(--color-count)"
+                              radius={4}
+                            >
+                              <LabelList
+                                dataKey="company"
+                                position="insideLeft"
+                                offset={8}
+                                className="fill-(--color-label) capitalize"
+                                fontSize={12}
+                              />
+                              <LabelList
+                                dataKey="count"
+                                position="right"
+                                offset={8}
+                                className="fill-foreground"
+                                fontSize={12}
+                              />
+                            </Bar>
+                          </BarChart>
+                        </ChartContainer>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-[200px] text-gray-500">
+                        <p className="text-sm">
+                          No banned companies data available
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div> */}
+
               <div className="col-span-1">
                 <Card className="shadow-none border-none w-full">
                   <CardHeader>
@@ -788,14 +991,16 @@ export function Options() {
                 </Card>
               </div>
 
-              {/* Second column - Pie chart for promoted vs banned words */}
+              {/* Second column - Pie chart for promoted, banned words, and banned companies */}
               <div className="col-span-1">
                 <Card className="shadow-none border-none w-full">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold text-gray-900">
                       Hidden Jobs Breakdown
                     </CardTitle>
-                    <CardDescription>Promoted, Words, and Companies</CardDescription>
+                    <CardDescription>
+                      Promoted, Words, and Companies
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {pieChartData.length > 0 &&
@@ -817,6 +1022,10 @@ export function Options() {
                             banned_words: {
                               label: "Words",
                               color: "#8ec5ff",
+                            },
+                            banned_companies: {
+                              label: "Companies",
+                              color: "#60a5fa",
                             },
                           }}
                           style={{

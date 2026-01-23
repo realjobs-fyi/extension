@@ -1,15 +1,33 @@
-# Real Jobs - Chrome Extension
+<p align="center">
+  <img src="/public/icon128.svg" alt="Real Jobs Logo" width="120" />
+</p>
 
-A Chrome Extension (Manifest V3) that helps you filter out fake and low-quality jobs on LinkedIn. Built with **TypeScript**, **React**, **Tailwind CSS**, and **Vite**.
+<h1 align="center">Real Jobs Chrome Extension</h1>
+
+<p align="center">
+  A Chrome Extension (Manifest V3) that helps you filter out fake and low-quality jobs on LinkedIn. Built with TypeScript, React, Tailwind CSS, and Vite.
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#project-structure">Project Structure</a> •
+  <a href="#development-scripts">Development Scripts</a> •
+  <a href="#chrome-extension-architecture">Chrome Extension Architecture</a> •
+  <a href="#browser-compatibility">Browser Compatibility</a>
+</p>
+
+---
 
 ## Features
 
 - **Hide Promoted Positions**: Automatically hide all promoted job listings
 - **Sort by Most Recent**: Automatically sort job listings by date posted
 - **Banned Words Filter**: Hide jobs with titles containing specific words (e.g., "junior", "senior", "staff", "commission only")
+- **Ban Companies**: Block specific companies from appearing in job listings with a simple one-click ban button
 - **Persistent Filtering**: Filters automatically re-apply on dynamic content changes and page navigation
-- **Job Tracking & Analytics**: Track hidden jobs with detailed analytics including time series charts, banned word frequency, and breakdown by reason
-- **Generate Resume Button**: Quick access button to generate resumes for job listings (NOT IMPLEMENTED YET)
+- **Job Tracking & Analytics**: Track hidden jobs with detailed analytics including time series charts, banned word frequency, banned company statistics, and breakdown by reason
 - **Type-Safe**: Full TypeScript support for better development experience
 
 ## Tech Stack
@@ -27,8 +45,8 @@ A Chrome Extension (Manifest V3) that helps you filter out fake and low-quality 
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd crxjs-project
+git clone https://github.com/realjobs-fyi/extension.git
+cd extension
 ```
 
 2. Install dependencies:
@@ -64,13 +82,34 @@ npm run build
 3. Click "Activate Filters" to enable filtering
 4. The page will reload and filters will be applied automatically
 
+### Banning Companies
+
+To ban a company from appearing in your job listings:
+
+1. Click on any job listing to view the job details
+2. Look for the **🚫 Ban** button next to the company name
+3. Click the button to ban the company
+4. The company will be immediately added to your banned list and all their job listings will be hidden
+5. To manage banned companies, go to the Options page (right-click extension icon → Options)
+
+### Analytics
+
+The extension provides detailed analytics in the Options page:
+
+- **Hidden Jobs Over Time**: Time series chart showing jobs hidden over the selected period (7, 14, or 30 days)
+- **Most Frequent Words**: Bar chart showing the top banned words that triggered filters
+- **Hidden Jobs Breakdown**: Pie chart showing the distribution of hidden jobs by reason (Promoted, Banned Words, Banned Companies)
+
+All analytics data is stored locally and automatically cleaned up after 30 days.
+
 ## Configuration
 
 1. Right-click the extension icon and select "Options", or click "Configure Options" in the popup
 2. Adjust settings:
    - **Hide Promoted Positions**: Toggle to show/hide promoted jobs
    - **Sort by Most Recent**: Toggle automatic sorting by date
-   - **Banned Words**: Enter words (one per line) to filter out from job titles
+   - **Banned Words**: Enter words to filter out from job titles
+   - **Banned Companies**: View and manage companies you've banned. Companies can be removed by clicking the X button on each company tag
 
 ## How It Works
 
@@ -81,6 +120,7 @@ npm run build
 - The extension only activates on LinkedIn job search pages
 - Built with React for a modern, component-based architecture
 - TypeScript ensures type safety throughout the codebase
+- Company bans are stored in sync storage and work across all your devices
 
 ## Technical Details
 
@@ -88,7 +128,7 @@ npm run build
 - **Content Script**: TypeScript-based script that runs on LinkedIn job search pages
 - **Service Worker**: Background script (TypeScript) handles logic and message passing
 - **Storage**: 
-  - `chrome.storage.sync` for settings (cross-device synchronization)
+  - `chrome.storage.sync` for settings and banned companies (cross-device synchronization)
   - `chrome.storage.local` for job tracking data (local only, 30-day retention)
 - **Build Tool**: Vite with CRXJS plugin for seamless extension development
 - **Styling**: Tailwind CSS for utility-first styling
@@ -312,12 +352,13 @@ chrome.storage.onChanged.addListener(
 
 **Options Page Saving Settings**:
 ```typescript
-// In options page (src/options/App.tsx)
+// In options page (src/options/Options.tsx)
 chrome.storage.sync.set(
   {
     hidePromotedPositions: hidePromoted,
     sortByDD: sortByDD,
     bannedWords: bannedWordsArray,
+    bannedCompanies: bannedCompaniesArray,
   },
   () => {
     // Settings saved - content script will automatically react via storage listener
@@ -333,10 +374,11 @@ Components can directly read/write storage without events.
 ```typescript
 // In content script (src/content/index.ts)
 chrome.storage.sync.get(
-  ["active", "hidePromotedPositions", "sortByDD", "bannedWords"],
+  ["active", "hidePromotedPositions", "sortByDD", "bannedWords", "bannedCompanies"],
   (result: Settings) => {
     isActive = result.active ?? false;
     hidePromotedPositions = result.hidePromotedPositions !== false;
+    bannedCompanies = result.bannedCompanies ?? [];
     // Apply settings...
   }
 );
@@ -349,12 +391,31 @@ window.JobTracker.trackHiddenJob("promoted").catch((err) => {
   console.warn("Failed to track:", err);
 });
 
+// Track banned company
+window.JobTracker.trackHiddenJob("banned_company", "Company Name").catch((err) => {
+  console.warn("Failed to track:", err);
+});
+
 // Tracker uses chrome.storage.local internally
 chrome.storage.local.get([STORAGE_KEY], (result) => {
   const trackingData = result[STORAGE_KEY] || [];
   trackingData.push(newEntry);
   chrome.storage.local.set({ [STORAGE_KEY]: trackingData });
 });
+```
+
+**Banning a Company**:
+```typescript
+// In content script (src/content/index.ts)
+const banCompany = async (companyName: string) => {
+  const normalizedName = companyName.toLowerCase().trim();
+  bannedCompanies.push(normalizedName);
+  
+  // Save to chrome.storage.sync
+  chrome.storage.sync.set({ bannedCompanies }, () => {
+    // Company banned - filters will automatically hide their jobs
+  });
+};
 ```
 
 ### Communication Flow Examples
@@ -379,10 +440,11 @@ chrome.storage.local.get([STORAGE_KEY], (result) => {
 3. **Content Script initializes on page load**
    ```typescript
    // Content script reads settings from storage
-   chrome.storage.sync.get(["active", ...], (result) => {
+   chrome.storage.sync.get(["active", "bannedCompanies", ...], (result) => {
      if (result.active) {
        applyFilters();
        startObserving();
+       addBanButtonToJobDetails(); // Add ban button to job detail pages
      }
    });
    ```
@@ -409,7 +471,7 @@ chrome.storage.local.get([STORAGE_KEY], (result) => {
    ```typescript
    // Content script storage listener fires
    chrome.storage.onChanged.addListener((changes) => {
-     if (changes.hidePromotedPositions) {
+     if (changes.hidePromotedPositions || changes.bannedCompanies) {
        // Re-apply filters with new settings
        init();
      }

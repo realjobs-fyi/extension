@@ -30,6 +30,7 @@ export default function Popup() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hiddenJobsCount, setHiddenJobsCount] = useState<number>(0);
+  const [bannedCompaniesCount, setBannedCompaniesCount] = useState<number>(0);
 
   // Check if current page is valid
   const checkUrl = async (): Promise<boolean> => {
@@ -57,6 +58,12 @@ export default function Popup() {
     return last7Days?.length ?? 0;
   };
 
+  // Get banned companies count
+  const getBannedCompaniesCount = async (): Promise<number> => {
+    const data = await chrome.storage.sync.get("bannedCompanies");
+    return data?.bannedCompanies?.length ?? 0;
+  };
+
   // Get current state
   const getState = async (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -73,9 +80,14 @@ export default function Popup() {
 
   // Update UI based on state
   const updateUI = async () => {
-    const count = await getHiddenJobsCount();
+    const [count, companiesCount, isValid, active] = await Promise.all([
+      getHiddenJobsCount(),
+      getBannedCompaniesCount(),
+      checkUrl(),
+      getState(),
+    ]);
     setHiddenJobsCount(count);
-    const [isValid, active] = await Promise.all([checkUrl(), getState()]);
+    setBannedCompaniesCount(companiesCount);
 
     setIsValidUrl(isValid);
     setIsActive(active);
@@ -253,7 +265,7 @@ export default function Popup() {
               </Tooltip>
             </div>
 
-            <p className="text-3xl font-semibold">{formatNumber(0)}</p>
+            <p className="text-3xl font-semibold">{formatNumber(bannedCompaniesCount)}</p>
           </div>
           </div>
 

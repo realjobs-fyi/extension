@@ -5,9 +5,10 @@
  * Tracking entry structure:
  * {
  *   id: string,           // Locally generated unique ID
- *   reason: string,       // "promoted" or "banned_word"
+ *   reason: string,       // "promoted", "banned_word", or "banned_company"
  *   date: string,         // ISO 8601 date string
  *   word?: string         // Optional: banned word that triggered the filter (only for banned_word reason)
+ *   company?: string       // Optional: banned company that triggered the filter (only for banned_company reason)
  * }
  */
 
@@ -16,6 +17,7 @@ import type {
   TrackingOptions,
   TrackingStatistics,
   BannedWordCount,
+  BannedCompanyCount,
   JobTracker,
 } from "../../types/track";
 
@@ -81,12 +83,12 @@ const cleanupOldData = async (): Promise<number> => {
 
 /**
  * Track a hidden job
- * @param reason - "promoted" or "banned_word"
- * @param word - Banned word (required if reason is "banned_word")
+ * @param reason - "promoted", "banned_word", or "banned_company"
+ * @param wordOrCompany - Banned word or company name (required if reason is "banned_word" or "banned_company")
  */
 const trackHiddenJob = async (
-  reason: "promoted" | "banned_word",
-  word?: string
+  reason: "promoted" | "banned_word" | "banned_company",
+  wordOrCompany?: string
 ): Promise<TrackingEntry> => {
   if (!reason) {
     console.warn("[Tracker] Invalid tracking data: reason is required", {
@@ -95,10 +97,17 @@ const trackHiddenJob = async (
     return Promise.reject(new Error("Reason is required"));
   }
 
-  if (reason === "banned_word" && !word) {
+  if (reason === "banned_word" && !wordOrCompany) {
     console.warn("[Tracker] Banned word required for banned_word reason");
     return Promise.reject(
       new Error("Banned word is required for banned_word reason")
+    );
+  }
+
+  if (reason === "banned_company" && !wordOrCompany) {
+    console.warn("[Tracker] Company name required for banned_company reason");
+    return Promise.reject(
+      new Error("Company name is required for banned_company reason")
     );
   }
 
@@ -115,8 +124,12 @@ const trackHiddenJob = async (
         date: getCurrentDate(),
       };
 
-      if (reason === "banned_word" && word) {
-        entry.word = word.toLowerCase().trim();
+      if (reason === "banned_word" && wordOrCompany) {
+        entry.word = wordOrCompany.toLowerCase().trim();
+      }
+
+      if (reason === "banned_company" && wordOrCompany) {
+        entry.company = wordOrCompany.toLowerCase().trim();
       }
 
       trackingData.push(entry);
@@ -184,8 +197,10 @@ const getStatistics = async (
     total: data.length,
     promoted: data.filter((entry) => entry.reason === "promoted").length,
     bannedWords: data.filter((entry) => entry.reason === "banned_word").length,
+    bannedCompanies: data.filter((entry) => entry.reason === "banned_company").length,
     byDate: {},
     bannedWordCounts: {},
+    bannedCompanyCounts: {},
   };
 
   // Group by date (YYYY-MM-DD) - convert UTC dates to local dates
@@ -193,7 +208,7 @@ const getStatistics = async (
     // Convert UTC ISO string to local date string (YYYY-MM-DD)
     const dateKey = getLocalDateString(entry.date);
     if (!stats.byDate[dateKey]) {
-      stats.byDate[dateKey] = { promoted: 0, bannedWords: 0, total: 0 };
+      stats.byDate[dateKey] = { promoted: 0, bannedWords: 0, bannedCompanies: 0, total: 0 };
     }
     stats.byDate[dateKey].total++;
 
@@ -201,6 +216,8 @@ const getStatistics = async (
       stats.byDate[dateKey].promoted++;
     } else if (entry.reason === "banned_word") {
       stats.byDate[dateKey].bannedWords++;
+    } else if (entry.reason === "banned_company") {
+      stats.byDate[dateKey].bannedCompanies++;
     }
   });
 
@@ -210,6 +227,14 @@ const getStatistics = async (
     .forEach((entry) => {
       const word = entry.word!;
       stats.bannedWordCounts[word] = (stats.bannedWordCounts[word] || 0) + 1;
+    });
+
+  // Count banned companies
+  data
+    .filter((entry) => entry.reason === "banned_company" && entry.company)
+    .forEach((entry) => {
+      const company = entry.company!;
+      stats.bannedCompanyCounts[company] = (stats.bannedCompanyCounts[company] || 0) + 1;
     });
 
   return stats;
@@ -233,6 +258,23 @@ const getMostCommonBannedWords = async (
 };
 
 /**
+ * Get most common banned companies
+ * @param limit - Number of top companies to return (default: 5)
+ * @returns Array of { company, count } objects, sorted by count
+ */
+const getMostCommonBannedCompanies = async (
+  limit = 5
+): Promise<BannedCompanyCount[]> => {
+  const stats = await getStatistics();
+  const companyCounts = stats.bannedCompanyCounts;
+
+  return Object.entries(companyCounts)
+    .map(([company, count]) => ({ company, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+};
+
+/**
  * Get time series data for graphs
  * @param options - Filter options
  * @returns Time series data grouped by date
@@ -240,7 +282,7 @@ const getMostCommonBannedWords = async (
 const getTimeSeriesData = async (
   options: TrackingOptions = {}
 ): Promise<
-  Record<string, { promoted: number; bannedWords: number; total: number }>
+  Record<string, { promoted: number; bannedWords: number; bannedCompanies: number; total: number }>
 > => {
   const stats = await getStatistics(options);
   return stats.byDate;
@@ -264,6 +306,7 @@ const JobTracker: JobTracker = {
   getTrackingData,
   getStatistics,
   getMostCommonBannedWords,
+  getMostCommonBannedCompanies,
   getTimeSeriesData,
   clearAllTrackingData,
   cleanupOldData,

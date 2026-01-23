@@ -16,12 +16,14 @@ interface Settings {
   hidePromotedPositions?: boolean;
   sortByDD?: boolean;
   bannedWords?: string[];
+  bannedCompanies?: string[];
 }
 
 let isActive = false;
 let hidePromotedPositions = true;
 let sortByDD = true;
 let bannedWords: string[] = [];
+let bannedCompanies: string[] = [];
 let observer: MutationObserver | null = null;
 
 // Observer for the apply container (where the button should be added)
@@ -30,19 +32,22 @@ let applyContainerObserver: MutationObserver | null = null;
 // Initialize and load settings
 const init = (): void => {
   chrome.storage.sync.get(
-    ["active", "hidePromotedPositions", "sortByDD", "bannedWords"],
+    ["active", "hidePromotedPositions", "sortByDD", "bannedWords", "bannedCompanies"],
     (result: Settings) => {
       isActive = result.active ?? false;
       hidePromotedPositions = result.hidePromotedPositions !== false;
       sortByDD = result.sortByDD !== false;
       bannedWords = result.bannedWords ?? [];
+      bannedCompanies = result.bannedCompanies ?? [];
 
       if (isActive) {
         applyFilters();
         startObserving();
-        startObservingApplyContainer(); // Add this line
+        startObservingApplyContainer();
+        addBanButtonToJobDetails();
       } else {
-        stopObservingApplyContainer(); // Add this line
+        stopObservingApplyContainer();
+        removeBanButtons();
       }
     }
   );
@@ -158,6 +163,222 @@ const hideBannedWordJobs = (): void => {
   });
 };
 
+// Hide jobs from banned companies in search results
+const hideBannedCompanyJobs = (): void => {
+  if (!bannedCompanies || bannedCompanies.length === 0) return;
+
+  // Get all job cards using the data-occludable-job-id attribute
+  const jobCards = document.querySelectorAll<HTMLLIElement>(
+    "li[data-occludable-job-id]"
+  );
+
+  jobCards.forEach((card) => {
+    // Skip if already hidden
+    if (card.style.display === "none") return;
+
+    // Find company name element - uses the artdeco-entity-lockup__subtitle class
+    const companyElement = card.querySelector<HTMLElement>(
+      ".artdeco-entity-lockup__subtitle span, " +
+        ".job-card-container__primary-description, " +
+        ".job-card-container__company-name"
+    );
+
+    if (companyElement) {
+      const companyText = (companyElement.textContent ?? "").toLowerCase().trim();
+      let matchedCompany: string | null = null;
+
+      const shouldHide = bannedCompanies.some((company) => {
+        const lowerCompany = company.toLowerCase().trim();
+        if (lowerCompany.length > 0 && companyText.includes(lowerCompany)) {
+          matchedCompany = company;
+          return true;
+        }
+        return false;
+      });
+
+      if (shouldHide && matchedCompany) {
+        card.style.display = "none";
+        console.log(
+          "[real jobs] Hidden job from banned company: " + companyText
+        );
+
+        // Track the hidden job
+        if (window.JobTracker) {
+          window.JobTracker.trackHiddenJob("banned_company", matchedCompany).catch(
+            (err: unknown) => {
+              console.warn("[real jobs] Failed to track banned company job:", err);
+            }
+          );
+        }
+      }
+    }
+  });
+};
+
+// Get company name from DOM (reads fresh from the current page state)
+const getCompanyNameFromDOM = (button: HTMLElement): string | null => {
+  // First try to find the company container in the same parent as the button
+  const parentContainer = button.closest(".display-flex");
+  const companyContainer = parentContainer?.querySelector<HTMLElement>(
+    ".job-details-jobs-unified-top-card__company-name"
+  ) || document.querySelector<HTMLElement>(
+    ".job-details-jobs-unified-top-card__company-name"
+  );
+
+  if (!companyContainer) {
+    console.warn("[real jobs] Could not find company container");
+    return null;
+  }
+
+  // Get company name from the link
+  const companyLink = companyContainer.querySelector("a");
+  if (!companyLink) {
+    console.warn("[real jobs] Could not find company link");
+    return null;
+  }
+
+  const companyName = (companyLink.textContent ?? "").trim();
+  if (!companyName) {
+    console.warn("[real jobs] Company name is empty");
+    return null;
+  }
+
+  console.log("[real jobs] Reading company name from DOM:", companyName);
+  return companyName;
+};
+
+// Add ban button to company name in job details view
+const addBanButtonToJobDetails = (): void => {
+  // Find the company name container in job details
+  const companyContainer = document.querySelector<HTMLElement>(
+    ".job-details-jobs-unified-top-card__company-name"
+  );
+
+  if (!companyContainer) return;
+
+  // Find parent container
+  const parentContainer = companyContainer.closest(".display-flex");
+  
+  // Remove any existing ban buttons in the parent container to avoid duplicates
+  if (parentContainer) {
+    const existingButtons = parentContainer.querySelectorAll(".real-jobs-ban-btn");
+    existingButtons.forEach(btn => btn.remove());
+  }
+  
+  // Also check if button already exists (defensive check)
+  if (parentContainer?.querySelector(".real-jobs-ban-btn")) return;
+
+  // Get company name from the link
+  const companyLink = companyContainer.querySelector("a");
+  if (!companyLink) return;
+
+  const companyName = (companyLink.textContent ?? "").trim();
+  if (!companyName) return;
+
+  // Check if this company is already banned
+  const isAlreadyBanned = bannedCompanies.some(
+    (c) => c.toLowerCase() === companyName.toLowerCase()
+  );
+
+  // Create ban button
+  const banButton = document.createElement("button");
+  banButton.className = "real-jobs-ban-btn";
+  banButton.innerHTML = isAlreadyBanned ? "✓ Banned" : "🚫 Ban";
+  banButton.title = isAlreadyBanned
+    ? `${companyName} is banned`
+    : `Ban ${companyName} from appearing in job listings`;
+  banButton.disabled = isAlreadyBanned;
+
+  // Style the button
+  banButton.style.cssText = `
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid ${isAlreadyBanned ? "#22c55e" : "#ef4444"};
+    background-color: ${isAlreadyBanned ? "#dcfce7" : "#fef2f2"};
+    color: ${isAlreadyBanned ? "#15803d" : "#dc2626"};
+    cursor: ${isAlreadyBanned ? "default" : "pointer"};
+    font-weight: 500;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+  `;
+
+  if (!isAlreadyBanned) {
+    banButton.addEventListener("mouseenter", () => {
+      banButton.style.backgroundColor = "#fecaca";
+    });
+    banButton.addEventListener("mouseleave", () => {
+      banButton.style.backgroundColor = "#fef2f2";
+    });
+    banButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Read company name fresh from DOM when clicked (not from closure)
+      const currentCompanyName = getCompanyNameFromDOM(banButton);
+      if (!currentCompanyName) {
+        console.warn("[real jobs] Could not find company name in DOM");
+        return;
+      }
+      
+      banCompany(currentCompanyName, banButton);
+    });
+  }
+
+  // Insert the button in the parent flex container (next to company name)
+  if (parentContainer) {
+    parentContainer.appendChild(banButton);
+  } else {
+    // Fallback: insert after company container
+    companyContainer.parentElement?.appendChild(banButton);
+  }
+};
+
+// Ban a company
+const banCompany = async (companyName: string, button: HTMLButtonElement): Promise<void> => {
+  const normalizedName = companyName.toLowerCase().trim();
+  
+  console.log("[real jobs] Banning company - Original:", companyName, "Normalized:", normalizedName);
+
+  // Check if already banned
+  if (bannedCompanies.some((c) => c.toLowerCase() === normalizedName)) {
+    console.log("[real jobs] Company already banned:", companyName);
+    return;
+  }
+
+  // Add to local list
+  bannedCompanies.push(normalizedName);
+  console.log("[real jobs] Updated local bannedCompanies array:", bannedCompanies);
+
+  // Save to chrome.storage.sync
+  chrome.storage.sync.set({ bannedCompanies }, () => {
+    if (chrome.runtime.lastError) {
+      console.error("[real jobs] Error saving banned company:", chrome.runtime.lastError);
+      return;
+    }
+    console.log("[real jobs] Company banned and saved to storage:", companyName, "Array:", bannedCompanies);
+
+    // Update button appearance
+    button.innerHTML = "✓ Banned";
+    button.title = `${companyName} is banned`;
+    button.disabled = true;
+    button.style.borderColor = "#22c55e";
+    button.style.backgroundColor = "#dcfce7";
+    button.style.color = "#15803d";
+    button.style.cursor = "default";
+
+    // Apply filters to hide jobs from this company
+    hideBannedCompanyJobs();
+  });
+};
+
+// Remove all ban buttons (when extension is deactivated)
+const removeBanButtons = (): void => {
+  const banButtons = document.querySelectorAll(".real-jobs-ban-btn");
+  banButtons.forEach((btn) => btn.remove());
+};
+
 // Apply all filters
 const applyFilters = (): void => {
   if (!isActive) return;
@@ -171,6 +392,8 @@ const applyFilters = (): void => {
   setTimeout(() => {
     hidePromotedJobs();
     hideBannedWordJobs();
+    hideBannedCompanyJobs();
+    addBanButtonToJobDetails();
   }, 100);
 };
 
@@ -182,6 +405,7 @@ const startObserving = (): void => {
 
   observer = new MutationObserver((mutations) => {
     let shouldApplyFilters = false;
+    let shouldAddBanButton = false;
 
     mutations.forEach((mutation) => {
       if (mutation.addedNodes.length > 0) {
@@ -200,12 +424,19 @@ const startObserving = (): void => {
             ) {
               shouldApplyFilters = true;
             }
+            // Check if job details view was loaded (for ban button)
+            if (
+              element.matches?.(".job-details-jobs-unified-top-card__company-name") ||
+              element.querySelector?.(".job-details-jobs-unified-top-card__company-name")
+            ) {
+              shouldAddBanButton = true;
+            }
           }
         });
       }
     });
 
-    if (shouldApplyFilters) {
+    if (shouldApplyFilters || shouldAddBanButton) {
       // Debounce filter application
       if (window.filterTimeout) {
         clearTimeout(window.filterTimeout);
@@ -352,7 +583,8 @@ chrome.storage.onChanged.addListener(
           init();
         } else {
           stopObserving();
-          stopObservingApplyContainer(); // Add this line
+          stopObservingApplyContainer();
+          removeBanButtons();
 
           // Show all hidden jobs (remove display:none)
           const hiddenJobs = document.querySelectorAll<HTMLElement>(
@@ -362,8 +594,15 @@ chrome.storage.onChanged.addListener(
             job.style.display = "";
           });
         }
+      } else if (changes.bannedCompanies) {
+        // Banned companies list changed, update local list and apply filters
+        bannedCompanies = changes.bannedCompanies.newValue ?? [];
+        if (isActive) {
+          hideBannedCompanyJobs();
+          addBanButtonToJobDetails();
+        }
       } else {
-        // Settings changed, reload filters
+        // Other settings changed, reload filters
         if (isActive) {
           init();
         }
