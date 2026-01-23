@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/public/icon128.svg" alt="Real Jobs Logo" width="120" />
+  <img src="/public/icon128.png" alt="Real Jobs Logo" width="120" />
 </p>
 
 <h1 align="center">Real Jobs Chrome Extension</h1>
