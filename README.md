@@ -87,7 +87,7 @@ npm run build
 To ban a company from appearing in your job listings:
 
 1. Click on any job listing to view the job details
-2. Look for the **🚫 Ban** button next to the company name
+2. Look for the **Ban** button next to the company name
 3. Click the button to ban the company
 4. The company will be immediately added to your banned list and all their job listings will be hidden
 5. To manage banned companies, go to the Options page (right-click extension icon → Options)

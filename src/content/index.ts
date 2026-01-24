@@ -249,88 +249,96 @@ const getCompanyNameFromDOM = (button: HTMLElement): string | null => {
 
 // Add ban button to company name in job details view
 const addBanButtonToJobDetails = (): void => {
-  // Find the company name container in job details
   const companyContainer = document.querySelector<HTMLElement>(
     ".job-details-jobs-unified-top-card__company-name"
   );
 
   if (!companyContainer) return;
 
-  // Find parent container
   const parentContainer = companyContainer.closest(".display-flex");
   
-  // Remove any existing ban buttons in the parent container to avoid duplicates
   if (parentContainer) {
     const existingButtons = parentContainer.querySelectorAll(".real-jobs-ban-btn");
     existingButtons.forEach(btn => btn.remove());
   }
   
-  // Also check if button already exists (defensive check)
-  if (parentContainer?.querySelector(".real-jobs-ban-btn")) return;
-
-  // Get company name from the link
   const companyLink = companyContainer.querySelector("a");
   if (!companyLink) return;
 
   const companyName = (companyLink.textContent ?? "").trim();
   if (!companyName) return;
 
-  // Check if this company is already banned
   const isAlreadyBanned = bannedCompanies.some(
     (c) => c.toLowerCase() === companyName.toLowerCase()
   );
 
-  // Create ban button
   const banButton = document.createElement("button");
   banButton.className = "real-jobs-ban-btn";
-  banButton.innerHTML = isAlreadyBanned ? "✓ Banned" : "🚫 Ban";
-  banButton.title = isAlreadyBanned
-    ? `${companyName} is banned`
-    : `Ban ${companyName} from appearing in job listings`;
+  
+  // Define Colors (Mapping Tailwind: red-500, red-100, green-500, etc.)
+  const colors = {
+    redText: "#ef4444",
+    redBg: "#fee2e2",
+    redHover: "#fecaca",
+    greenText: "#22c55e",
+    greenBg: "#dcfce7",
+  };
+
+  // Create SVG Icon
+  const svgIcon = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" 
+      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" 
+      style="margin-right: 4px; display: inline-block; vertical-align: middle;">
+      ${isAlreadyBanned 
+        ? '<polyline points="20 6 9 17 4 12"></polyline>' // Checkmark for banned
+        : '<path d="M4.929 4.929 19.07 19.071"/><circle cx="12" cy="12" r="10"/>' // Ban icon
+      }
+    </svg>
+  `;
+
+  banButton.innerHTML = `${svgIcon}<span>${isAlreadyBanned ? "Banned" : "Ban"}</span>`;
+  banButton.title = isAlreadyBanned ? `${companyName} is banned` : `Ban ${companyName}`;
   banButton.disabled = isAlreadyBanned;
 
-  // Style the button
+  // Modern Tailwind Styling converted to CSS
   banButton.style.cssText = `
-    margin-left: 8px;
-    padding: 2px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    margin-left: 12px;
+    padding: 4px 10px;
     font-size: 12px;
-    border-radius: 4px;
-    border: 1px solid ${isAlreadyBanned ? "#22c55e" : "#ef4444"};
-    background-color: ${isAlreadyBanned ? "#dcfce7" : "#fef2f2"};
-    color: ${isAlreadyBanned ? "#15803d" : "#dc2626"};
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 9999px; /* rounded-xl/full */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: ${isAlreadyBanned ? "default" : "pointer"};
-    font-weight: 500;
-    transition: all 0.2s ease;
+    border: 1px solid ${isAlreadyBanned ? colors.greenText : colors.redText};
+    background-color: ${isAlreadyBanned ? colors.greenBg : colors.redBg};
+    color: ${isAlreadyBanned ? colors.greenText : colors.redText};
     vertical-align: middle;
+    outline: none;
   `;
 
   if (!isAlreadyBanned) {
     banButton.addEventListener("mouseenter", () => {
-      banButton.style.backgroundColor = "#fecaca";
+      banButton.style.backgroundColor = colors.redHover;
     });
     banButton.addEventListener("mouseleave", () => {
-      banButton.style.backgroundColor = "#fef2f2";
+      banButton.style.backgroundColor = colors.redBg;
     });
     banButton.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
-      // Read company name fresh from DOM when clicked (not from closure)
       const currentCompanyName = getCompanyNameFromDOM(banButton);
-      if (!currentCompanyName) {
-        console.warn("[real jobs] Could not find company name in DOM");
-        return;
-      }
-      
-      banCompany(currentCompanyName, banButton);
+      if (currentCompanyName) banCompany(currentCompanyName, banButton);
     });
   }
 
-  // Insert the button in the parent flex container (next to company name)
   if (parentContainer) {
     parentContainer.appendChild(banButton);
   } else {
-    // Fallback: insert after company container
     companyContainer.parentElement?.appendChild(banButton);
   }
 };
