@@ -36,4 +36,5 @@ export default defineManifest({
     type: 'module',
   },
   options_page: 'src/options/index.html',
+  homepage_url: 'https://realjobs.fyi',
 })

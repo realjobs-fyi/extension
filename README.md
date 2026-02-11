@@ -13,9 +13,11 @@
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#project-structure">Project Structure</a> •
-  <a href="#development-scripts">Development Scripts</a> •
-  <a href="#chrome-extension-architecture">Chrome Extension Architecture</a> •
-  <a href="#browser-compatibility">Browser Compatibility</a>
+  <a href="#development">Development</a> •
+  <a href="#contributing">Contributing</a> •
+  <a href="#chrome-extension-architecture">Architecture</a> •
+  <a href="#browser-compatibility">Compatibility</a> •
+  <a href="#license">License</a>
 </p>
 
 ---
@@ -136,65 +138,64 @@ All analytics data is stored locally and automatically cleaned up after 30 days.
 ## Project Structure
 
 ```
-├── manifest.config.ts              # Extension manifest configuration (TypeScript)
-├── vite.config.ts                  # Vite build configuration
-├── tsconfig.json                   # TypeScript configuration
-├── package.json                    # Project dependencies and scripts
+├── manifest.config.ts              # Extension manifest (Manifest V3)
+├── vite.config.ts                  # Vite + CRXJS build config
+├── tsconfig.json                   # TypeScript config
+├── package.json                    # Dependencies and scripts
 │
-├── public/                         # Public assets
-│   ├── icon16.png                  # 16x16 icon
-│   ├── icon48.png                  # 48x48 icon
-│   └── icon128.png                 # 128x128 icon
+├── public/                         # Static assets (icons, etc.)
+│   ├── icon16.png, icon48.png, icon128.png
+│   └── ...
 │
-├── types/                          # TypeScript type definitions
-│   └── track.ts                    # Job tracking type definitions
+├── types/                          # Shared TypeScript types
+│   └── track.ts                    # Job tracking types
 │
-└── src/                            # Source code
-    ├── assets/                     # Extension assets
-    │   ├── icon16.png             # 16x16 icon
-    │   ├── icon48.png             # 48x48 icon
-    │   └── icon128.png            # 128x128 icon
+└── src/
+    ├── assets/                     # Fonts and images
+    │   ├── font/                   # Instrument Sans
+    │   └── img/                    # Extension icons
     │
-    ├── background/                 # Background service worker
-    │   └── index.ts               # Service worker logic (TypeScript)
+    ├── background/                 # Service worker
+    │   └── index.ts                # Lifecycle, messages, storage, tabs
     │
-    ├── content/                    # Content scripts
-    │   └── index.ts               # Content script for DOM manipulation (TypeScript)
+    ├── content/                    # Injected into LinkedIn job search pages
+    │   └── index.ts                # DOM filtering, ban buttons, observer
     │
-    ├── popup/                      # Extension popup UI
-    │   ├── index.html             # Popup HTML
-    │   ├── main.tsx               # React entry point
-    │   ├── App.tsx                # Popup React component
-    │   ├── index.css              # Tailwind CSS imports
+    ├── popup/                      # Toolbar popup UI
+    │   ├── index.html, main.tsx, App.tsx, Popup.tsx, index.css
     │
-    ├── options/                    # Options page
-    │   ├── index.html             # Options HTML
-    │   ├── main.tsx               # React entry point
-    │   ├── App.tsx                # Options React component
-    │   └── index.css              # Tailwind CSS imports
+    ├── options/                    # Options/settings page
+    │   ├── index.html, main.tsx, App.tsx, Options.tsx, index.css
     │
-    ├── sidepanel/                  # Side panel (optional)
-    │   ├── index.html
-    │   ├── main.tsx
-    │   ├── App.tsx
-    │   └── index.css
+    ├── components/ui/              # Shared UI (Radix-based)
+    │   ├── card.tsx, chart.tsx, select.tsx, switch.tsx, tooltip.tsx
     │
-    ├── components/                 # Shared React components
-    │   └── ui/                     # Shadcn/ui components
-    │       └── tooltip.tsx        # Tooltip component
+    ├── lib/                        # Shared utilities
+    │   └── utils.ts                # cn() and helpers
     │
-    └── utils/                      # Utility functions
-        └── tracker.ts              # Job tracking system (TypeScript)
+    └── utils/                      # Feature utilities
+        ├── logger.ts               # Logging
+        ├── number.ts               # Number helpers
+        └── tracker.ts             # Job tracking (storage, analytics)
 ```
 
-## Development Scripts
+## Development
 
-- `npm run dev` - Start development server with hot module reloading
-- `npm run build` - Build extension for production
-- `npm run preview` - Preview production build
-- `npm run clean` - Clean build artifacts
+### Prerequisites
 
-## Development Notes
+- **Node.js** 18+ (recommend 20 LTS)
+- **npm** 9+
+
+### Scripts
+
+| Command | Description |
+|--------|-------------|
+| `npm run dev` | Start dev server with HMR for popup, options, and content scripts |
+| `npm run build` | Type-check and build extension into `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run clean` | Remove `dist/` and build artifacts |
+
+### Development Notes
 
 - The extension uses **CRXJS Vite plugin** for seamless Chrome extension development
 - Hot module reloading works for popup, options, and content scripts during development
@@ -511,7 +512,40 @@ const banCompany = async (companyName: string) => {
 - **Service Worker Lifecycle**: Service workers may be terminated - don't rely on persistent state, use storage instead
 - **Message Channel**: Keep message channels open for async operations by returning `true` from listeners
 
+## Contributing
+
+Contributions are welcome. Here’s how to get started:
+
+1. **Fork and clone** the repo (see [Installation](#installation)).
+2. **Create a branch**: `git checkout -b feature/your-feature` or `fix/your-fix`.
+3. **Make your changes**: follow existing code style (TypeScript, React, Tailwind). Run `npm run build` to ensure it compiles.
+4. **Test** by loading the `dist` folder in Chrome (`chrome://extensions` → Load unpacked) and trying the flow on LinkedIn job search.
+5. **Commit** with clear messages, then open a **Pull Request** against `main`.
+6. **Report bugs or ideas** via [GitHub Issues](https://github.com/realjobs-fyi/extension/issues).
+
+### Quick tips for contributors
+
+- **Popup/Options**: Edit files in `src/popup/` and `src/options/`; HMR will reload the extension UI.
+- **Content script**: Changes in `src/content/index.ts` or `src/utils/tracker.ts` need a LinkedIn job search page refresh (or reload the extension).
+- **Background**: Service worker changes often require a click on “Service worker” in `chrome://extensions` to reload, or reload the extension.
+- **Types**: Shared types live in `types/` and `src/lib/`; keep Chrome API usage type-safe with `@types/chrome`.
+
+## Publishing (for maintainers)
+
+To ship a new version to the Chrome Web Store:
+
+1. **Bump version** in `package.json` (the manifest uses this version).
+2. **Build**: `npm run build`. This produces `dist/` and a store-ready zip in `release/` (e.g. `real-jobs-v0.0.1.zip`).
+3. **Chrome Web Store**: [Developer Dashboard](https://chrome.google.com/webstore/devconsole) → your extension → “Upload new package” and upload the zip from `release/` (or zip `dist/` yourself).
+4. **Submit for review** and fill in any required store fields (description, screenshots, privacy policy if needed).
+
+Test in a clean profile with “Load unpacked” from `dist/` before uploading.
+
 ## Browser Compatibility
 
-- Chrome (Manifest V3)
-- Edge (Chromium-based)
+- **Chrome** (Manifest V3)
+- **Edge** (Chromium-based)
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
